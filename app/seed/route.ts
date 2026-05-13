@@ -2,14 +2,14 @@ import bcrypt from "bcrypt";
 import postgres from "postgres";
 import { invoices, customers, revenue, users } from "../lib/placeholder-data";
 
-// Initialize connection using your exact AWS/Vercel environment variables
+// Initialize the database client
 const sql = postgres({
   host: process.env.nextjstutorial_PGHOST,
   port: parseInt(process.env.nextjstutorial_PGPORT || "5432", 10),
   database: process.env.nextjstutorial_PGDATABASE,
   username: process.env.nextjstutorial_PGUSER,
-  // Note: Omit the password key entirely. Vercel routes your connection over an internal
-  // OIDC proxy that relies on the nextjstutorial_AWS_ROLE_ARN parameter instead.
+  // Note: Omit the password key. Deployed Vercel apps communicate via an internal
+  // proxy linked directly to your nextjstutorial_AWS_ROLE_ARN variable.
   ssl: process.env.nextjstutorial_PGSSLMODE === "require" ? "require" : false,
 });
 
@@ -34,13 +34,11 @@ async function seedUsers() {
       `;
     }),
   );
-
   return insertedUsers;
 }
 
 async function seedInvoices() {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
-
   await sql`
     CREATE TABLE IF NOT EXISTS invoices (
       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -60,13 +58,11 @@ async function seedInvoices() {
       `,
     ),
   );
-
   return insertedInvoices;
 }
 
 async function seedCustomers() {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
-
   await sql`
     CREATE TABLE IF NOT EXISTS customers (
       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -85,7 +81,6 @@ async function seedCustomers() {
       `,
     ),
   );
-
   return insertedCustomers;
 }
 
@@ -106,21 +101,34 @@ async function seedRevenue() {
       `,
     ),
   );
-
   return insertedRevenue;
 }
 
 export async function GET() {
+  // Guard clause: Block execution on local development to prevent server crashes
+  if (process.env.VERCEL_ENV === "development" || !process.env.VERCEL_ENV) {
+    return Response.json(
+      {
+        message:
+          "Seeding bypassed locally. Push or deploy your app to run this against your AWS Database.",
+        environment: "local-dev",
+      },
+      { status: 200 },
+    );
+  }
+
   try {
-    const result = await sql.begin((sql) => [
+    await sql.begin((sql) => [
       seedUsers(),
       seedCustomers(),
       seedInvoices(),
       seedRevenue(),
     ]);
-
     return Response.json({ message: "Database seeded successfully" });
   } catch (error) {
-    return Response.json({ error }, { status: 500 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : error },
+      { status: 500 },
+    );
   }
 }
