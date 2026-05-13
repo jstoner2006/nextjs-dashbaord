@@ -1,8 +1,17 @@
-import bcrypt from 'bcrypt';
-import postgres from 'postgres';
-import { invoices, customers, revenue, users } from '../lib/placeholder-data';
+import bcrypt from "bcrypt";
+import postgres from "postgres";
+import { invoices, customers, revenue, users } from "../lib/placeholder-data";
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+// Initialize connection using your exact AWS/Vercel environment variables
+const sql = postgres({
+  host: process.env.nextjstutorial_PGHOST,
+  port: parseInt(process.env.nextjstutorial_PGPORT || "5432", 10),
+  database: process.env.nextjstutorial_PGDATABASE,
+  username: process.env.nextjstutorial_PGUSER,
+  // Note: Omit the password key entirely. Vercel routes your connection over an internal
+  // OIDC proxy that relies on the nextjstutorial_AWS_ROLE_ARN parameter instead.
+  ssl: process.env.nextjstutorial_PGSSLMODE === "require" ? "require" : false,
+});
 
 async function seedUsers() {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
@@ -110,7 +119,7 @@ export async function GET() {
       seedRevenue(),
     ]);
 
-    return Response.json({ message: 'Database seeded successfully' });
+    return Response.json({ message: "Database seeded successfully" });
   } catch (error) {
     return Response.json({ error }, { status: 500 });
   }
