@@ -1,15 +1,34 @@
 import bcrypt from "bcrypt";
 import postgres from "postgres";
+import { Signer } from "@aws-sdk/rds-signer"; // Required for generating real production tokens
 import { invoices, customers, revenue, users } from "../lib/placeholder-data";
 
-// Initialize the database client
+// Dynamic production token resolver
+const getProductionToken = async (): Promise<string> => {
+  try {
+    const signer = new Signer({
+      hostname: process.env.nextjstutorial_PGHOST!,
+      port: parseInt(process.env.nextjstutorial_PGPORT || "5432", 10),
+      region: process.env.nextjstutorial_AWS_REGION || "us-east-1",
+      username: process.env.nextjstutorial_PGUSER!,
+    });
+
+    // Generates a cryptographically valid IAM token for the AWS OIDC tunnel
+    return await signer.getAuthToken();
+  } catch (error) {
+    console.error("Failed to generate AWS production IAM token:", error);
+    throw new Error("Database token authentication generation crashed.");
+  }
+};
+
+// Initialize connection with structural parameters
 const sql = postgres({
   host: process.env.nextjstutorial_PGHOST,
   port: parseInt(process.env.nextjstutorial_PGPORT || "5432", 10),
   database: process.env.nextjstutorial_PGDATABASE,
   username: process.env.nextjstutorial_PGUSER,
-  // Note: Omit the password key. Deployed Vercel apps communicate via an internal
-  // proxy linked directly to your nextjstutorial_AWS_ROLE_ARN variable.
+  // The postgres client evaluates this function dynamically to resolve PAM handshakes
+  password: getProductionToken,
   ssl: process.env.nextjstutorial_PGSSLMODE === "require" ? "require" : false,
 });
 
@@ -105,16 +124,11 @@ async function seedRevenue() {
 }
 
 export async function GET() {
-  // Guard clause: Block execution on local development to prevent server crashes
+  // Guard clause: Avoid running locally to prevent credential state conflicts
   if (process.env.VERCEL_ENV === "development" || !process.env.VERCEL_ENV) {
-    return Response.json(
-      {
-        message:
-          "Seeding bypassed locally. Push or deploy your app to run this against your AWS Database.",
-        environment: "local-dev",
-      },
-      { status: 200 },
-    );
+    return Response.json({
+      message: "Seeding bypassed locally. Push to live.",
+    });
   }
 
   try {
