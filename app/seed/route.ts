@@ -1,36 +1,8 @@
 import bcrypt from "bcrypt";
 import postgres from "postgres";
-import { Signer } from "@aws-sdk/rds-signer"; // Required for generating real production tokens
 import { invoices, customers, revenue, users } from "../lib/placeholder-data";
 
-// Dynamic production token resolver
-const getProductionToken = async (): Promise<string> => {
-  try {
-    const signer = new Signer({
-      hostname: process.env.nextjstutorial_PGHOST!,
-      port: parseInt(process.env.nextjstutorial_PGPORT || "5432", 10),
-      region: process.env.nextjstutorial_AWS_REGION || "us-east-1",
-      username: process.env.nextjstutorial_PGUSER!,
-    });
-
-    // Generates a cryptographically valid IAM token for the AWS OIDC tunnel
-    return await signer.getAuthToken();
-  } catch (error) {
-    console.error("Failed to generate AWS production IAM token:", error);
-    throw new Error("Database token authentication generation crashed.");
-  }
-};
-
-// Initialize connection with structural parameters
-const sql = postgres({
-  host: process.env.nextjstutorial_PGHOST,
-  port: parseInt(process.env.nextjstutorial_PGPORT || "5432", 10),
-  database: process.env.nextjstutorial_PGDATABASE,
-  username: process.env.nextjstutorial_PGUSER,
-  // The postgres client evaluates this function dynamically to resolve PAM handshakes
-  password: getProductionToken,
-  ssl: process.env.nextjstutorial_PGSSLMODE === "require" ? "require" : false,
-});
+const sql = postgres(process.env.POSTGRES_URL!, { ssl: "require" });
 
 async function seedUsers() {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
@@ -53,11 +25,13 @@ async function seedUsers() {
       `;
     }),
   );
+
   return insertedUsers;
 }
 
 async function seedInvoices() {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS invoices (
       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -77,11 +51,13 @@ async function seedInvoices() {
       `,
     ),
   );
+
   return insertedInvoices;
 }
 
 async function seedCustomers() {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS customers (
       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -100,6 +76,7 @@ async function seedCustomers() {
       `,
     ),
   );
+
   return insertedCustomers;
 }
 
@@ -120,29 +97,21 @@ async function seedRevenue() {
       `,
     ),
   );
+
   return insertedRevenue;
 }
 
 export async function GET() {
-  // Guard clause: Avoid running locally to prevent credential state conflicts
-  if (process.env.VERCEL_ENV === "development" || !process.env.VERCEL_ENV) {
-    return Response.json({
-      message: "Seeding bypassed locally. Push to live.",
-    });
-  }
-
   try {
-    await sql.begin((sql) => [
+    const result = await sql.begin((sql) => [
       seedUsers(),
       seedCustomers(),
       seedInvoices(),
       seedRevenue(),
     ]);
+
     return Response.json({ message: "Database seeded successfully" });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : error },
-      { status: 500 },
-    );
+    return Response.json({ error }, { status: 500 });
   }
 }
