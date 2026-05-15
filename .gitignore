@@ -17,6 +17,9 @@
 
 #local notes
 /local_notes
+
+#diagrams for now
+/diagrams
 # misc
 .DS_Store
 *.pem
