@@ -5,6 +5,9 @@
 /.pnp
 .pnp.js
 
+#personal content to ignore
+/diagrams/potential solution space.drawio
+
 # testing
 /coverage
 
